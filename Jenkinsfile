@@ -1,21 +1,21 @@
 pipeline {
-
     agent any
 
     stages {
 
         stage('Checkout Code') {
-
             steps {
-
-                echo "Checking out source code..."
-
+                echo 'Checking out source code...'
                 checkout scm
-
             }
+        }
 
+        stage('Maven Build') {
+            steps {
+                echo 'Building Spring Boot application...'
+                sh 'mvn clean package'
+            }
         }
 
     }
-
 }
