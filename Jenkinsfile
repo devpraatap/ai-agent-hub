@@ -13,7 +13,14 @@ pipeline {
         stage('Maven Build') {
             steps {
                 echo 'Building Spring Boot application...'
-                sh 'mvn clean package'
+                sh 'mvn -B clean package -DskipTests'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                sh 'docker build -t ai-agent-hub:latest .'
             }
         }
 
