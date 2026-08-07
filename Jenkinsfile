@@ -19,8 +19,8 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                echo 'Building Docker image...'
-                sh 'docker build -t ai-agent-hub:latest .'
+                echo "Building Docker image: ai-agent-hub:${BUILD_NUMBER}"
+                sh "docker build -t ai-agent-hub:${BUILD_NUMBER} ."
             }
         }
 
@@ -40,8 +40,8 @@ pipeline {
 
         stage('Run New Container') {
             steps {
-                echo 'Starting new container...'
-                sh 'docker run -d --name ai-agent-hub -p 8081:8081 ai-agent-hub:latest'
+                echo "Starting container using image ai-agent-hub:${BUILD_NUMBER}..."
+                sh "docker run -d --name ai-agent-hub -p 8081:8081 ai-agent-hub:${BUILD_NUMBER}"
             }
         }
 
