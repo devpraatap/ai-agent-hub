@@ -24,5 +24,12 @@ pipeline {
             }
         }
 
+        stage('Stop Existing Container') {
+            steps {
+                echo 'Stopping existing container...'
+                sh 'docker stop ai-agent-hub || true'
+            }
+        }
+
     }
 }
