@@ -31,5 +31,12 @@ pipeline {
             }
         }
 
+        stage('Remove Existing Container') {
+            steps {
+                echo 'Removing existing container...'
+                sh 'docker rm ai-agent-hub || true'
+            }
+        }
+
     }
 }
