@@ -38,5 +38,12 @@ pipeline {
             }
         }
 
+        stage('Run New Container') {
+            steps {
+                echo 'Starting new container...'
+                sh 'docker run -d --name ai-agent-hub -p 8080:8080 ai-agent-hub:latest'
+            }
+        }
+
     }
 }
