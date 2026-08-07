@@ -10,10 +10,10 @@ pipeline {
             }
         }
 
-        stage('Maven Build') {
+        stage('Maven Build & Test') {
             steps {
-                echo 'Building Spring Boot application...'
-                sh 'mvn -B clean package -DskipTests'
+                echo 'Building and testing Spring Boot application...'
+                sh 'mvn -B clean package'
             }
         }
 
