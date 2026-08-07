@@ -45,5 +45,13 @@ pipeline {
             }
         }
 
+        stage('Verify Deployment') {
+            steps {
+                echo 'Verifying application...'
+                sh 'sleep 10'
+                sh 'curl -f http://localhost:8081/ || exit 1'
+                echo 'Application is running successfully!'
+            }
+        }
     }
 }
