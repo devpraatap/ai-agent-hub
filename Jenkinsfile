@@ -86,13 +86,26 @@ pipeline {
             }
         }
 
-        stage('Verify Kubernetes Deployment') {
+        stage('Verify Deployment') {
             steps {
                 echo 'Verifying Kubernetes deployment...'
 
                 sh '''
+                    echo "===== Deployment ====="
                     kubectl get deployment ai-agent-hub
+
+                    echo "===== Pods ====="
                     kubectl get pods -l app=ai-agent-hub
+
+                    echo "===== Current Image ====="
+                    kubectl get deployment ai-agent-hub \
+                      -o jsonpath='{.spec.template.spec.containers[0].image}'
+                    echo
+
+                    echo "===== Available Replicas ====="
+                    kubectl get deployment ai-agent-hub \
+                      -o jsonpath='{.status.availableReplicas}'
+                    echo
                 '''
             }
         }
@@ -103,6 +116,33 @@ pipeline {
 
                 sh 'docker image prune -f'
             }
+        }
+    }
+
+    post {
+
+        failure {
+            echo 'Deployment failed. Collecting Kubernetes diagnostics...'
+
+            sh '''
+                echo "===== Deployment Status ====="
+                kubectl get deployment ai-agent-hub || true
+
+                echo "===== Pods ====="
+                kubectl get pods -l app=ai-agent-hub -o wide || true
+
+                echo "===== ReplicaSets ====="
+                kubectl get replicasets -l app=ai-agent-hub || true
+
+                echo "===== Recent Events ====="
+                kubectl get events --sort-by=.lastTimestamp | tail -30 || true
+            '''
+        }
+
+        success {
+            echo '========================================'
+            echo 'CI/CD DEPLOYMENT SUCCESSFUL'
+            echo '========================================'
         }
     }
 }
