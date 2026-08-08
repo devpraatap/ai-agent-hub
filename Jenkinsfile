@@ -4,10 +4,12 @@ pipeline {
     environment {
         AWS_REGION = 'us-east-1'
         ECR_REPOSITORY = 'ai-agent-hub'
+
         AWS_ACCOUNT_ID = sh(
             script: 'aws sts get-caller-identity --query Account --output text',
             returnStdout: true
         ).trim()
+
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         ECR_IMAGE = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${BUILD_NUMBER}"
     }
@@ -31,6 +33,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "Building Docker image: ai-agent-hub:${BUILD_NUMBER}"
+
                 sh "docker build -t ai-agent-hub:${BUILD_NUMBER} ."
             }
         }
@@ -38,6 +41,7 @@ pipeline {
         stage('Login to Amazon ECR') {
             steps {
                 echo 'Logging in to Amazon ECR...'
+
                 sh '''
                     aws ecr get-login-password --region ${AWS_REGION} | \
                     docker login --username AWS --password-stdin ${ECR_REGISTRY}
@@ -48,6 +52,7 @@ pipeline {
         stage('Tag Docker Image') {
             steps {
                 echo "Tagging image as ${ECR_IMAGE}"
+
                 sh "docker tag ai-agent-hub:${BUILD_NUMBER} ${ECR_IMAGE}"
             }
         }
@@ -55,44 +60,47 @@ pipeline {
         stage('Push Docker Image to ECR') {
             steps {
                 echo "Pushing ${ECR_IMAGE} to Amazon ECR..."
+
                 sh "docker push ${ECR_IMAGE}"
             }
         }
 
-        stage('Stop Existing Container') {
+        stage('Deploy to Kubernetes') {
             steps {
-                echo 'Stopping existing container...'
-                sh 'docker stop ai-agent-hub || true'
+                echo "Deploying ${ECR_IMAGE} to Kubernetes..."
+
+                sh """
+                    kubectl set image deployment/ai-agent-hub \
+                    ai-agent-hub=${ECR_IMAGE}
+                """
             }
         }
 
-        stage('Remove Existing Container') {
+        stage('Kubernetes Rollout Status') {
             steps {
-                echo 'Removing existing container...'
-                sh 'docker rm ai-agent-hub || true'
+                echo 'Waiting for Kubernetes rollout to complete...'
+
+                sh '''
+                    kubectl rollout status deployment/ai-agent-hub --timeout=180s
+                '''
             }
         }
 
-        stage('Run New Container') {
+        stage('Verify Kubernetes Deployment') {
             steps {
-                echo "Starting container using image ${ECR_IMAGE}..."
+                echo 'Verifying Kubernetes deployment...'
 
-                sh "docker run -d --name ai-agent-hub -p 8081:8081 ${ECR_IMAGE}"
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                echo 'Verifying application...'
-                sh 'sleep 10'
-                sh 'curl -f http://localhost:8081/ || exit 1'
-                echo 'Application is running successfully!'
+                sh '''
+                    kubectl get deployment ai-agent-hub
+                    kubectl get pods -l app=ai-agent-hub
+                '''
             }
         }
 
         stage('Docker Cleanup') {
             steps {
                 echo 'Cleaning up unused Docker images...'
+
                 sh 'docker image prune -f'
             }
         }
