@@ -3,15 +3,16 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
-        ECR_REPOSITORY = 'ai-agent-hub'
-
         AWS_ACCOUNT_ID = sh(
             script: 'aws sts get-caller-identity --query Account --output text',
             returnStdout: true
         ).trim()
 
+        ECR_REPOSITORY = 'ai-agent-hub'
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         ECR_IMAGE = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${BUILD_NUMBER}"
+
+        S3_BUCKET = "ai-agent-hub-artifacts-${AWS_ACCOUNT_ID}"
     }
 
     stages {
@@ -33,7 +34,6 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "Building Docker image: ai-agent-hub:${BUILD_NUMBER}"
-
                 sh "docker build -t ai-agent-hub:${BUILD_NUMBER} ."
             }
         }
@@ -52,7 +52,6 @@ pipeline {
         stage('Tag Docker Image') {
             steps {
                 echo "Tagging image as ${ECR_IMAGE}"
-
                 sh "docker tag ai-agent-hub:${BUILD_NUMBER} ${ECR_IMAGE}"
             }
         }
@@ -60,7 +59,6 @@ pipeline {
         stage('Push Docker Image to ECR') {
             steps {
                 echo "Pushing ${ECR_IMAGE} to Amazon ECR..."
-
                 sh "docker push ${ECR_IMAGE}"
             }
         }
@@ -78,34 +76,55 @@ pipeline {
 
         stage('Kubernetes Rollout Status') {
             steps {
-                echo 'Waiting for Kubernetes rollout to complete...'
+                echo 'Waiting for Kubernetes rollout...'
 
                 sh '''
-                    kubectl rollout status deployment/ai-agent-hub --timeout=180s
+                    kubectl rollout status deployment/ai-agent-hub \
+                    --timeout=180s
                 '''
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Verify Kubernetes Deployment') {
             steps {
                 echo 'Verifying Kubernetes deployment...'
 
                 sh '''
-                    echo "===== Deployment ====="
                     kubectl get deployment ai-agent-hub
-
-                    echo "===== Pods ====="
                     kubectl get pods -l app=ai-agent-hub
+                    kubectl get service ai-agent-hub-service
+                '''
+            }
+        }
 
-                    echo "===== Current Image ====="
-                    kubectl get deployment ai-agent-hub \
-                      -o jsonpath='{.spec.template.spec.containers[0].image}'
-                    echo
+        stage('Upload Artifacts to S3') {
+            steps {
+                echo "Uploading build ${BUILD_NUMBER} artifacts to S3..."
 
-                    echo "===== Available Replicas ====="
-                    kubectl get deployment ai-agent-hub \
-                      -o jsonpath='{.status.availableReplicas}'
-                    echo
+                sh '''
+                    mkdir -p artifact-metadata
+
+                    echo "Build Number: ${BUILD_NUMBER}" \
+                        > artifact-metadata/build-info.txt
+
+                    echo "Git Commit: ${GIT_COMMIT:-unknown}" \
+                        >> artifact-metadata/build-info.txt
+
+                    echo "ECR Image: ${ECR_IMAGE}" \
+                        >> artifact-metadata/build-info.txt
+
+                    echo "Build Date: $(date -u)" \
+                        >> artifact-metadata/build-info.txt
+
+                    aws s3 cp target/*.jar \
+                        s3://${S3_BUCKET}/builds/${BUILD_NUMBER}/
+
+                    aws s3 cp target/surefire-reports/ \
+                        s3://${S3_BUCKET}/test-reports/${BUILD_NUMBER}/ \
+                        --recursive || true
+
+                    aws s3 cp artifact-metadata/build-info.txt \
+                        s3://${S3_BUCKET}/metadata/${BUILD_NUMBER}/build-info.txt
                 '''
             }
         }
@@ -113,36 +132,8 @@ pipeline {
         stage('Docker Cleanup') {
             steps {
                 echo 'Cleaning up unused Docker images...'
-
                 sh 'docker image prune -f'
             }
-        }
-    }
-
-    post {
-
-        failure {
-            echo 'Deployment failed. Collecting Kubernetes diagnostics...'
-
-            sh '''
-                echo "===== Deployment Status ====="
-                kubectl get deployment ai-agent-hub || true
-
-                echo "===== Pods ====="
-                kubectl get pods -l app=ai-agent-hub -o wide || true
-
-                echo "===== ReplicaSets ====="
-                kubectl get replicasets -l app=ai-agent-hub || true
-
-                echo "===== Recent Events ====="
-                kubectl get events --sort-by=.lastTimestamp | tail -30 || true
-            '''
-        }
-
-        success {
-            echo '========================================'
-            echo 'CI/CD DEPLOYMENT SUCCESSFUL'
-            echo '========================================'
         }
     }
 }
